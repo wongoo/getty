@@ -252,7 +252,6 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	log.Debugf("now:%s, length:%d, err:%v", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
 	return length, perrors.WithStack(err)
-	//return length, err
 }
 
 // tcp connection write

@@ -24,6 +24,9 @@ type ServerOptions struct {
 	cert       string
 	privateKey string
 	caCert     string
+
+	epollMode bool
+	ep        epoller
 }
 
 // @addr server listen address.
@@ -103,5 +106,12 @@ func WithConnectionNumber(num int) ClientOption {
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
+	}
+}
+
+// WithEpollMode enable epoll mode
+func WithEpollMode() ServerOption {
+	return func(o *ServerOptions) {
+		o.epollMode = true
 	}
 }

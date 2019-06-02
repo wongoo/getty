@@ -1,9 +1,9 @@
 package getty
 
 import (
+	"context"
 	"net"
 	"strings"
-	"context"
 	"sync"
 	"time"
 )
@@ -29,7 +29,6 @@ func IsSameAddr(a1, a2 net.Addr) bool {
 	a2s = strings.TrimPrefix(a2s, ipv4prefix)
 	return a1s == a2s
 }
-
 
 var (
 	defaultCtxKey int = 1
@@ -81,7 +80,6 @@ func (c *ValuesContext) Delete(key interface{}) {
 func (c *ValuesContext) Set(key interface{}, value interface{}) {
 	c.Context.Value(defaultCtxKey).(Values).Set(key, value)
 }
-
 
 type Wheel struct {
 	sync.RWMutex
@@ -173,8 +171,6 @@ func (w *Wheel) Now() time.Time {
 
 	return now
 }
-
-
 
 type CountWatch struct {
 	start time.Time

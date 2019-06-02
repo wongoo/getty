@@ -130,7 +130,7 @@ func (c *client) dialTCP() Session {
 		}
 		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
 		if err == nil && IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-			conn.Close()
+			_ = conn.Close()
 			err = errSelfConnect
 		}
 		if err == nil {

@@ -211,9 +211,13 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	ss := newTCPSession(conn, s)
 	err = newSession(ss)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, perrors.WithStack(err)
 	}
+
+	sess := ss.(*session)
+	sess.epollMode = s.epollMode
+	sess.ep = s.ep
 
 	return ss, nil
 }
@@ -253,7 +257,6 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			// client.RunEventLoop()
 			client.(*session).run()
 		}
 	}()
@@ -425,6 +428,15 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
 		panic(fmt.Errorf("server.listen() = error:%+v", err))
+	}
+
+	if s.epollMode {
+		ep, err := createEpoll()
+		if err != nil {
+			panic(fmt.Errorf("create epoll error:%+v", err))
+		}
+		s.ep = ep
+		ep.start()
 	}
 
 	switch s.endPointType {

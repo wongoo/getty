@@ -74,6 +74,9 @@ type session struct {
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
+
+	epollMode bool
+	ep        epoller
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -326,12 +329,12 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	}()
 
 	var err error
-	if timeout <= 0 {
+	if s.epollMode || timeout <= 0 {
 		if err = s.writer.Write(s, pkg); err != nil {
 			s.incWritePkgNum()
-			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
+			return perrors.WithStack(err)
 		}
-		return perrors.WithStack(err)
+		return nil
 	}
 	select {
 	case s.wQ <- pkg:
@@ -408,15 +411,24 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 // func (s *session) RunEventLoop() {
 func (s *session) run() {
-	if s.rQ == nil || s.wQ == nil {
-		errStr := fmt.Sprintf("session{name:%s, rQ:%#v, wQ:%#v}",
-			s.name, s.rQ, s.wQ)
-		log.Error(errStr)
-		panic(errStr)
-	}
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
 			s.name, s.Connection, s.listener, s.writer)
+		log.Error(errStr)
+		panic(errStr)
+	}
+
+	if s.epollMode {
+		if err := s.ep.add(s); err != nil {
+			log.Errorf("failed to add into epoll: %#v", err)
+			panic(err)
+		}
+		return
+	}
+
+	if s.rQ == nil || s.wQ == nil {
+		errStr := fmt.Sprintf("session{name:%s, rQ:%#v, wQ:%#v}",
+			s.name, s.rQ, s.wQ)
 		log.Error(errStr)
 		panic(errStr)
 	}
@@ -494,7 +506,7 @@ LOOP:
 				s.listener.OnMessage(s, pkg)
 				s.incReadPkgNum()
 			} else {
-				log.Infof("[session.handleLoop] drop readin package{%#v}", inPkg)
+				log.Infof("[session.handleLoop] drop reading package{%#v}", inPkg)
 			}
 
 		case outPkg = <-s.wQ:
@@ -507,7 +519,7 @@ LOOP:
 				}
 				s.incWritePkgNum()
 			} else {
-				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
+				log.Infof("[session.handleLoop] drop write out package{%#v}", outPkg)
 			}
 
 		case <-wheel.After(s.period):
@@ -548,7 +560,8 @@ func (s *session) handlePackage() {
 		}
 	}()
 
-	if _, ok := s.Connection.(*gettyTCPConn); ok {
+	switch s.Connection.(type) {
+	case *gettyTCPConn:
 		if s.reader == nil {
 			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader)
 			log.Error(errStr)
@@ -556,11 +569,11 @@ func (s *session) handlePackage() {
 		}
 
 		err = s.handleTCPPackage()
-	} else if _, ok := s.Connection.(*gettyWSConn); ok {
+	case *gettyWSConn:
 		err = s.handleWSPackage()
-	} else if _, ok := s.Connection.(*gettyUDPConn); ok {
+	case *gettyUDPConn:
 		err = s.handleUDPPackage()
-	} else {
+	default:
 		panic(fmt.Sprintf("unknown type session{%#v}", s))
 	}
 }
@@ -635,10 +648,15 @@ func (s *session) handleTCPPackage() error {
 				break
 			}
 			s.UpdateActive()
-			s.rQ <- pkg
+			if s.epollMode {
+				s.listener.OnMessage(s, pkg)
+				s.incReadPkgNum()
+			} else {
+				s.rQ <- pkg
+			}
 			pktBuf.Next(pkgLen)
 		}
-		if exit {
+		if s.epollMode || exit {
 			break
 		}
 	}
@@ -772,8 +790,8 @@ func (s *session) stop() {
 			// let read/Write timeout asap
 			now := time.Now()
 			if conn := s.Conn(); conn != nil {
-				conn.SetReadDeadline(now.Add(s.readTimeout()))
-				conn.SetWriteDeadline(now.Add(s.writeTimeout()))
+				_ = conn.SetReadDeadline(now.Add(s.readTimeout()))
+				_ = conn.SetWriteDeadline(now.Add(s.writeTimeout()))
 			}
 			close(s.done)
 			c := s.GetAttribute(sessionClientKey)
