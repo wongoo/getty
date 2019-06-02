@@ -3,7 +3,7 @@ package tcp
 import (
 	"fmt"
 	"github.com/dubbogo/getty"
-	"github.com/dubbogo/getty/examples/hello"
+	"github.com/dubbogo/getty/demo/hello"
 
 	"net"
 	"time"

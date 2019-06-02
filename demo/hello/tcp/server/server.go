@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/dubbogo/getty"
-	"github.com/dubbogo/getty/examples/hello"
-	"github.com/dubbogo/getty/examples/hello/tcp"
+	"github.com/dubbogo/getty/demo/hello"
+	"github.com/dubbogo/getty/demo/hello/tcp"
 )
 
 func main() {
