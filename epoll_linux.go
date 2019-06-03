@@ -16,9 +16,10 @@ type epoll struct {
 	connections map[int]*session
 	lock        *sync.RWMutex
 	workPool    *pool
+	done        *chan struct{}
 }
 
-func createEpoll() (epoller, error) {
+func createEpoll(doneChan *chan struct{}) (epoller, error) {
 	fd, err := unix.EpollCreate1(0)
 	if err != nil {
 		return nil, err
@@ -27,7 +28,8 @@ func createEpoll() (epoller, error) {
 		fd:          fd,
 		lock:        &sync.RWMutex{},
 		connections: make(map[int]*session),
-		workPool:    newPool(100000, 200000),
+		workPool:    newPool(100000, 200000, doneChan),
+		done:        doneChan,
 	}, nil
 }
 
@@ -68,35 +70,34 @@ func (e *epoll) remove(s *session) error {
 	return nil
 }
 
-func (e *epoll) wait() ([]*session, error) {
+func (e *epoll) wait() error {
 	events := make([]unix.EpollEvent, epollBatchSize)
 	n, err := unix.EpollWait(e.fd, events, epollBatchSize)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	e.lock.RLock()
-	connections := make([]*session, n)
 	for i := 0; i < n; i++ {
-		connections[i] = e.connections[int(events[i].Fd)]
+		ss := e.connections[int(events[i].Fd)]
+		if ss != nil {
+			e.workPool.addTask(ss)
+		}
 	}
 	e.lock.RUnlock()
-	return connections, nil
+	return nil
 }
 
 func (e *epoll) start() {
 	go func() {
 		for {
-			sessions, err := e.wait()
-			if err != nil {
-				log.Warnf("failed to epoll wait %v", err)
-				continue
-			}
-			for _, ss := range sessions {
-				if ss == nil {
-					break
+			select {
+			case <-*e.done:
+				return
+			default:
+				if err := e.wait(); err != nil {
+					log.Warnf("failed to epoll wait %v", err)
+					continue
 				}
-
-				e.workPool.addTask(ss)
 			}
 		}
 	}()

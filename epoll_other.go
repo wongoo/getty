@@ -11,7 +11,7 @@ var (
 type epollOther struct {
 }
 
-func createEpoll() (epoller, error) {
+func createEpoll(doneChan *chan struct{}) (epoller, error) {
 	return nil, unsupportedError
 }
 
@@ -23,8 +23,8 @@ func (e *epollOther) remove(ss *session) error {
 	return unsupportedError
 }
 
-func (e *epollOther) wait() ([]*session, error) {
-	return nil, unsupportedError
+func (e *epollOther) wait() error {
+	return unsupportedError
 }
 
 func (e *epollOther) start() {

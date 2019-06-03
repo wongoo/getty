@@ -123,11 +123,11 @@ func (s *server) stop() {
 			s.lock.Unlock()
 			if s.streamListener != nil {
 				// let the server exit asap when got error from RunEventLoop.
-				s.streamListener.Close()
+				_ = s.streamListener.Close()
 				s.streamListener = nil
 			}
 			if s.pktListener != nil {
-				s.pktListener.Close()
+				_ = s.pktListener.Close()
 				s.pktListener = nil
 			}
 		})
@@ -431,9 +431,9 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	}
 
 	if s.epollMode {
-		ep, err := createEpoll()
+		ep, err := createEpoll(&s.done)
 		if err != nil {
-			panic(fmt.Errorf("create epoll error:%+v", err))
+			panic(fmt.Errorf("create epoll error: %+v", err))
 		}
 		s.ep = ep
 		ep.start()

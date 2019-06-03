@@ -12,7 +12,7 @@ var (
 type epoller interface {
 	add(ss *session) error
 	remove(ss *session) error
-	wait() ([]*session, error)
+	wait() error
 	start()
 }
 

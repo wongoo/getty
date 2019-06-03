@@ -1,15 +1,25 @@
 package main
 
 import (
+	"flag"
 	"github.com/dubbogo/getty"
 	"github.com/dubbogo/getty/demo/hello"
 	"github.com/dubbogo/getty/demo/hello/tcp"
 )
 
+var (
+	epollMode = flag.Bool("epoll", false, "epoll mode")
+)
+
 func main() {
-	server := getty.NewTCPServer(
-		getty.WithLocalAddress(":8090"),
-	)
+	flag.Parse()
+
+	options := []getty.ServerOption{getty.WithLocalAddress(":8090")}
+	if *epollMode {
+		options = append(options, getty.WithEpollMode())
+	}
+
+	server := getty.NewTCPServer(options...)
 
 	go server.RunEventLoop(tcp.NewHelloServerSession)
 
