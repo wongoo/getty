@@ -13,6 +13,7 @@ var (
 
 func main() {
 	flag.Parse()
+	hello.SetLimit()
 
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090")}
 	if *epollMode {

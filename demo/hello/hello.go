@@ -4,6 +4,7 @@ import (
 	"github.com/dubbogo/getty"
 	"math/rand"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -11,7 +12,6 @@ var (
 	Sessions []getty.Session
 	lock     sync.RWMutex
 )
-
 
 func HelloClientRequest() {
 	for {
@@ -63,4 +63,17 @@ func removeSession(session getty.Session) {
 	}
 	log.Infof("after remove session{%s}, left session number:%d", session.Stat(), len(Sessions))
 	lock.Unlock()
+}
+
+func SetLimit() {
+	var rLimit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		panic(err)
+	}
+	rLimit.Cur = rLimit.Max
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		panic(err)
+	}
+
+	log.Infof("set cur limit: %d", rLimit.Cur)
 }

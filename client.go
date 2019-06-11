@@ -327,19 +327,18 @@ func (c *client) dial() Session {
 	return nil
 }
 
-func (c *client) sessionNum() int {
-	var num int
-
+func (c *client) cleanClosed() {
 	c.Lock()
 	for s := range c.ssMap {
 		if s.IsClosed() {
 			delete(c.ssMap, s)
 		}
 	}
-	num = len(c.ssMap)
 	c.Unlock()
+}
 
-	return num
+func (c *client) sessionNum() int {
+	return len(c.ssMap)
 }
 
 func (c *client) connect() {
@@ -392,25 +391,31 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 func (c *client) reConnect() {
 	var num, max, times int
 
-	// c.Lock()
 	max = c.number
-	// c.Unlock()
+
 	for {
 		if c.IsClosed() {
 			log.Warnf("client{peer:%s} goroutine exit now.", c.addr)
 			break
 		}
 
+		c.cleanClosed()
+
 		num = c.sessionNum()
-		if max <= num {
+		if num >= max {
 			break
 		}
-		c.connect()
-		times++
-		if maxTimes < times {
-			times = maxTimes
+
+		for ; num < max && !c.IsClosed(); num++ {
+			c.connect()
+			if c.reconnectInterval > 0 {
+				times++
+				if times > maxTimes {
+					times = maxTimes
+				}
+				time.Sleep(time.Duration(int64(times) * int64(c.reconnectInterval)))
+			}
 		}
-		time.Sleep(time.Duration(int64(times) * int64(c.reconnectInterval)))
 	}
 }
 

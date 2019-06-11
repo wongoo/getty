@@ -8,15 +8,17 @@ import (
 )
 
 var (
-	epollMode = flag.Bool("epoll", false, "epoll mode")
+	ip          = flag.String("ip", "127.0.0.1", "server IP")
+	connections = flag.Int("conn", 1, "number of tcp connections")
 )
 
 func main() {
 	flag.Parse()
+	hello.SetLimit()
 
 	client := getty.NewTCPClient(
-		getty.WithServerAddress("127.0.0.1:8090"),
-		getty.WithConnectionNumber(2),
+		getty.WithServerAddress(*ip+":8090"),
+		getty.WithConnectionNumber(*connections),
 	)
 
 	client.RunEventLoop(tcp.NewHelloClientSession)
