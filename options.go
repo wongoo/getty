@@ -160,3 +160,54 @@ func WithTaskPoolTaskQueueNumber(number int) TaskPoolOption {
 		o.tQNumber = number
 	}
 }
+
+/////////////////////////////////////////
+// epoll Options
+/////////////////////////////////////////
+const (
+	defaultEpollMaxEvents = 64
+)
+
+type EpollOptions struct {
+	TaskPoolOptions
+
+	maxEvents int // epoll batch size
+}
+
+func (o *EpollOptions) validate() {
+	o.TaskPoolOptions.validate()
+
+	if o.maxEvents < 1 {
+		o.maxEvents = defaultEpollMaxEvents
+	}
+}
+
+type EpollOption func(o *EpollOptions)
+
+// @maxEvents is the max size of events epoll waiting once
+func WithEpollMaxEvents(maxEvents int) EpollOption {
+	return func(o *EpollOptions) {
+		o.maxEvents = maxEvents
+	}
+}
+
+// @size is the task queue pool size
+func WithEpollTaskPoolSize(size int) EpollOption {
+	return func(o *EpollOptions) {
+		o.tQPoolSize = size
+	}
+}
+
+// @length is the task queue length
+func WithEpollTaskQueueLength(length int) EpollOption {
+	return func(o *EpollOptions) {
+		o.tQLen = length
+	}
+}
+
+// @number is the task queue number
+func WithEpollTaskQueueNumber(number int) EpollOption {
+	return func(o *EpollOptions) {
+		o.tQNumber = number
+	}
+}

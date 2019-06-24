@@ -36,7 +36,11 @@ func NewTaskPool(opts ...TaskPoolOption) *TaskPool {
 	}
 
 	tOpts.validate()
+	return CreateTaskPool(tOpts)
+}
 
+// create a task pool
+func CreateTaskPool(tOpts TaskPoolOptions) *TaskPool {
 	p := &TaskPool{
 		TaskPoolOptions: tOpts,
 		qArray:          make([]chan task, tOpts.tQNumber),
@@ -82,7 +86,11 @@ func (p *TaskPool) run(id int, q chan task) {
 
 		case t, ok = <-q:
 			if ok {
-				t.session.listener.OnMessage(t.session, t.pkg)
+				if t.pkg == nil {
+					t.session.handlePackage()
+				} else {
+					t.session.listener.OnMessage(t.session, t.pkg)
+				}
 			}
 		}
 	}

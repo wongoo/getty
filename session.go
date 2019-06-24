@@ -49,6 +49,7 @@ type session struct {
 
 	// net read Write
 	Connection
+	epoller Epoller
 
 	listener EventListener
 
@@ -308,6 +309,14 @@ func (s *session) SetTaskPool(p *TaskPool) {
 	s.tPool = p
 }
 
+// set epoller
+func (s *session) SetEpoller(epoller Epoller) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.epoller = epoller
+}
+
 // set attribute of key @session:key
 func (s *session) GetAttribute(key interface{}) interface{} {
 	s.lock.RLock()
@@ -452,6 +461,13 @@ func (s *session) run() {
 		panic(errStr)
 	}
 
+	if s.epoller != nil && s.tPool == nil {
+		errStr := fmt.Sprintf("session{name:%s} task pool not set when enable epoller",
+			s.name)
+		log.Error(errStr)
+		panic(errStr)
+	}
+
 	if s.wQ == nil {
 		s.wQ = make(chan interface{}, defaultQLen)
 	}
@@ -470,7 +486,15 @@ func (s *session) run() {
 	// start read/write gr
 	atomic.AddInt32(&(s.grNum), 2)
 	go s.handleLoop()
-	go s.handlePackage()
+
+	if s.epoller != nil {
+		if err := s.epoller.Add(s); err != nil {
+			s.Close()
+			return
+		}
+	} else {
+		go s.handlePackage()
+	}
 }
 
 func (s *session) handleLoop() {
@@ -585,16 +609,22 @@ func (s *session) handlePackage() {
 			log.Errorf("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		grNum = atomic.AddInt32(&(s.grNum), -1)
-		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
-		s.stop()
+		if s.epoller == nil {
+			grNum = atomic.AddInt32(&(s.grNum), -1)
+			log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
+
+			s.stop()
+		}
+
 		if err != nil {
+			s.stop()
 			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), err)
 			s.listener.OnError(s, err)
 		}
 	}()
 
-	if _, ok := s.Connection.(*gettyTCPConn); ok {
+	switch s.Connection.(type) {
+	case *gettyTCPConn:
 		if s.reader == nil {
 			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader)
 			log.Error(errStr)
@@ -602,11 +632,11 @@ func (s *session) handlePackage() {
 		}
 
 		err = s.handleTCPPackage()
-	} else if _, ok := s.Connection.(*gettyWSConn); ok {
+	case *gettyWSConn:
 		err = s.handleWSPackage()
-	} else if _, ok := s.Connection.(*gettyUDPConn); ok {
+	case *gettyUDPConn:
 		err = s.handleUDPPackage()
-	} else {
+	default:
 		panic(fmt.Sprintf("unknown type session{%#v}", s))
 	}
 }
@@ -644,6 +674,10 @@ func (s *session) handleTCPPackage() error {
 			bufLen, err = conn.read(buf)
 			if err != nil {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
+					// exit when no data and wait epoller notice
+					if s.epoller == nil {
+						return nil
+					}
 					break
 				}
 				log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
@@ -720,6 +754,10 @@ func (s *session) handleUDPPackage() error {
 		bufLen, addr, err = conn.read(buf)
 		log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
+			// exit when no data and wait epoller notice
+			if s.epoller == nil {
+				break
+			}
 			continue
 		}
 		if err != nil {
@@ -780,6 +818,10 @@ func (s *session) handleWSPackage() error {
 		}
 		pkg, err = conn.read()
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
+			// exit when no data and wait epoller notice
+			if s.epoller == nil {
+				break
+			}
 			continue
 		}
 		if err != nil {
@@ -815,6 +857,10 @@ func (s *session) stop() {
 
 	default:
 		s.once.Do(func() {
+			if err := s.epoller.Remove(s); err != nil {
+				log.Warnf("remove session[%s] from epoller error: %+v", s.name, err)
+			}
+
 			// let read/Write timeout asap
 			now := time.Now()
 			if conn := s.Conn(); conn != nil {
