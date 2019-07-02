@@ -16,7 +16,7 @@ import (
 
 var (
 	epollMode            = flag.Bool("epoll", false, "epoll mode")
-	epollMaxEvents       = flag.Int("epoll_max_events", 0, "epoll max events")
+	epollMaxEvents       = flag.Int("epoll_max_events", 100, "epoll max events")
 	epollTaskQueueLength = flag.Int("epoll_task_queue_length", 50, "epoll task queue length")
 	epollTaskQueueNumber = flag.Int("epoll_task_queue_number", 2, "epoll task queue number")
 	epollTaskPollSize    = flag.Int("epoll_task_pool_size", 1000, "epoll task poll size")

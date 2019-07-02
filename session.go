@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	gstime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -41,6 +42,14 @@ const (
 /////////////////////////////////////////
 // session
 /////////////////////////////////////////
+
+var (
+	wheel = gstime.NewWheel(gstime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
+)
+
+func GetTimeWheel() *gstime.Wheel {
+	return wheel
+}
 
 // getty base session
 type session struct {
@@ -383,7 +392,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
 
-	case <-time.After(timeout):
+	case <-wheel.After(timeout):
 		log.Warnf("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
@@ -504,7 +513,7 @@ func (s *session) handleLoop() {
 		wsFlag bool
 		wsConn *gettyWSConn
 		// start  time.Time
-		counter CountWatch
+		counter gstime.CountWatch
 		inPkg   interface{}
 		outPkg  interface{}
 	)
@@ -572,7 +581,7 @@ LOOP:
 				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
-		case <-time.After(s.period):
+		case <-wheel.After(s.period):
 			if flag {
 				if wsFlag {
 					err := wsConn.writePing()
@@ -698,6 +707,7 @@ func (s *session) handleTCPPackage() error {
 			}
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+			// for case 3/case 4
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
 				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
@@ -708,15 +718,15 @@ func (s *session) handleTCPPackage() error {
 				exit = true
 				break
 			}
-			// handle case 2
+			// handle case 2/case 3
 			if pkg == nil {
 				break
 			}
-			// handle case 3
+			// handle case 4
 			s.UpdateActive()
 			s.addTask(pkg)
 			pktBuf.Next(pkgLen)
-			// continue to handle case 4
+			// continue to handle case 5
 		}
 		if exit {
 			break
@@ -729,23 +739,24 @@ func (s *session) handleTCPPackage() error {
 // get package from udp packet
 func (s *session) handleUDPPackage() error {
 	var (
-		ok       bool
-		err      error
-		netError net.Error
-		conn     *gettyUDPConn
-		bufLen   int
-		buf      []byte
-		addr     *net.UDPAddr
-		pkgLen   int
-		pkg      interface{}
+		ok        bool
+		err       error
+		netError  net.Error
+		conn      *gettyUDPConn
+		bufLen    int
+		maxBufLen int
+		buf       []byte
+		addr      *net.UDPAddr
+		pkgLen    int
+		pkg       interface{}
 	)
 
 	conn = s.Connection.(*gettyUDPConn)
-	bufLen = int(s.maxMsgLen + maxReadBufLen)
+	maxBufLen = int(s.maxMsgLen + maxReadBufLen)
 	if int(s.maxMsgLen<<1) < bufLen {
-		bufLen = int(s.maxMsgLen << 1)
+		maxBufLen = int(s.maxMsgLen << 1)
 	}
-	buf = make([]byte, bufLen)
+	buf = make([]byte, maxBufLen)
 	for {
 		if s.IsClosed() {
 			break

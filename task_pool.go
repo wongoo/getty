@@ -50,6 +50,7 @@ func CreateTaskPool(tOpts TaskPoolOptions) *TaskPool {
 	for i := 0; i < p.tQNumber; i++ {
 		p.qArray[i] = make(chan task, p.tQLen)
 	}
+	p.start()
 
 	return p
 }
